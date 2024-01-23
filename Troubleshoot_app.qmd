@@ -1,0 +1,447 @@
+---
+title: "Troubleshoot_app"
+format: html
+editor: visual
+---
+
+```{r}
+b = b %>%
+  select(Genotype, Percent_blighted) %>% 
+    ungroup() %>% 
+  mutate(Genotype = as.factor(Genotype)) %>% 
+  na.omit() %>% 
+  filter(Genotype == "Vina") %>% 
+  group_by(Genotype)
+
+ggplot(data, 
+       aes(x = Genotype, y = Percent_blighted,
+           group = Genotype))+
+  geom_boxplot(aes(fill = Genotype))
+```
+
+```{r}
+# Assuming your data is stored in a data frame named 'data'
+# Replace 'data' with the actual name of your data frame
+
+# Create a data frame
+data <- data.frame(
+  Genotype = rep("Vina", 5) %>% factor(),
+  Percent_blighted = c(3, 5, 4, 3, 1)
+)
+
+# Load ggplot2
+library(ggplot2)
+
+# Create the boxplot with jittered points
+ggplot(data, aes(x = Genotype, y = Percent_blighted, color = Percent_blighted)) +
+  geom_boxplot(fill = "white", outlier.shape = NA) +
+  geom_jitter(position = position_jitter(width = 0.2), alpha = 0.7) +
+  scale_color_gradient(low = "blue", high = "red") +
+  labs(title = "Boxplot of Percent Blighted by Genotype", x = "Genotype", y = "Percent Blighted")
+
+
+
+
+
+```
+
+```{r}
+x = list.files(path = 'All_Data_Renamed/All_Data/', pattern = '*.csv')
+
+# read each file and store as list
+y = lapply(x, FUN = function(z){
+  # reads file
+  a = read.csv(paste0('All_Data_Renamed/All_Data/', z))
+  # makes a variable containing the filename
+  b = a %>%
+    mutate(filename = gsub('.csv', '', z))
+
+})
+
+# bind all data frames together
+z = bind_rows(y)
+
+b = z %>%
+  # Removed transposed trays and EPL experiments
+  filter(!filename %like% 'EPL|2022-03-28') %>%
+  group_by(filename) %>%
+  mutate(tray_number = seq(1:n()),
+         row = str_extract(kernel_name, '\\d{2}(?=_\\d{2})')) %>%
+  group_by(filename, row) %>%
+  # Make more intuitive tray numbering
+  mutate(new_tray_number = rev(tray_number)) %>%
+  ungroup() %>%
+  select(!c(row, tray_number)) %>%
+  arrange(-desc(new_tray_number)) %>%
+  # Extract variables from filename
+  separate(filename, into = c('Date',
+                              'Genotype(s)',
+                              'Locations',
+                              'Assay_type',
+                              'DAI', 
+                              'Stage', 
+                              'Side'), sep = '_') %>%
+  filter(!DAI %in% c('0dai', '1dai')) %>% 
+  group_by(Date,
+           `Genotype(s)`,
+           Locations,
+           Assay_type,
+           DAI,
+           Stage,
+           Side) %>%
+  mutate(
+    # New filename is encoded with information about what each cell contains (genotype, treatment, assay type). This code extracts that information with string manipulation and regular expressions.
+    
+    # Treatment = if(str_split(`Genotype(s)`, ',')[[1]] %>% length() > 1){
+    
+    Treatment = 
+      case_when(
+        nchar(Locations) > 20 ~
+          case_when(
+            data.table::between(new_tray_number,
+                                str_extract(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=Mm)') %>% unlist() %>% as.numeric(.), 
+                                NAbounds = NA) ~ 'Mock',
+            data.table::between(new_tray_number,
+                                str_extract(Locations, '(?<=Mm)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=,X)') %>% unlist() %>% as.numeric(.), 
+                                NAbounds = NA) ~ 'Mock',
+            data.table::between(new_tray_number,
+                                str_extract(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=Xx)') %>% unlist() %>% as.numeric(.),
+                                NAbounds = NA) ~ 'Xaj',
+            data.table::between(new_tray_number,
+                                str_extract(Locations, '(?<=Xx)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.), 
+                                NAbounds = NA) ~ 'Xaj', 
+            
+            TRUE ~ 'Empty'
+            
+          ),
+        nchar(Locations) %>% between(9,14) ~
+          case_when(
+            data.table::between(new_tray_number,
+                                str_extract(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=X)') %>% unlist() %>% as.numeric(.), 
+                                NAbounds = NA) ~ 'Mock',
+            data.table::between(new_tray_number,
+                                str_extract(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.), 
+                                NAbounds = NA) ~ 'Xaj',
+            TRUE ~ 'Empty'
+          ),
+        nchar(Locations) < 6 ~
+          case_when(
+            data.table::between(new_tray_number,
+                                str_extract(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.),
+                                NAbounds = NA) ~ 'Mock',
+            data.table::between(new_tray_number,
+                                str_extract(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.),
+                                NAbounds = NA) ~ 'Xaj',
+            TRUE ~ 'Empty'
+          )
+      ),
+    Genotype =
+      case_when(
+        str_split(`Genotype(s)`, ',')[[1]] %>% length() > 1 ~ 
+          case_when(
+            data.table::between(new_tray_number, str_extract(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=Mm)') %>% unlist() %>% as.numeric(.), NAbounds = NA) ~ 
+              str_split(`Genotype(s)`, ',')[[1]][1],
+            data.table::between(new_tray_number, str_extract(Locations, '(?<=Mm)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=,X)') %>% unlist() %>% as.numeric(.), NAbounds = NA) ~ 
+              str_split(`Genotype(s)`, ',')[[1]][2],
+            data.table::between(new_tray_number, str_extract(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=Xx)') %>% unlist() %>% as.numeric(.), NAbounds = NA) ~ 
+              str_split(`Genotype(s)`, ',')[[1]][1],
+            data.table::between(new_tray_number, str_extract(Locations, '(?<=Xx)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.), NAbounds = NA) ~ 
+              str_split(`Genotype(s)`, ',')[[1]][2],
+            TRUE ~ 'Empty'
+          ),
+        str_split(`Genotype(s)`, ',')[[1]] %>% length() == 1 ~ 
+          case_when(
+            data.table::between(new_tray_number, str_extract(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=X)') %>% unlist() %>% as.numeric(.), NAbounds = NA) ~ 
+              `Genotype(s)`,
+            data.table::between(new_tray_number, str_extract(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.), NAbounds = NA) ~ 
+              `Genotype(s)`,
+            TRUE ~ 'Empty'
+          )
+      ),
+    Assay_type = 
+      case_when(
+        str_split(Assay_type, '-')[[1]] %>% length() > 1 ~ 
+          case_when(
+            data.table::between(new_tray_number, 
+                                str_extract(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=Mm)') %>% unlist() %>% as.numeric(.)) ~ 
+              str_split(Assay_type, '-')[[1]][1],
+            data.table::between(new_tray_number, 
+                                str_extract(Locations, '(?<=Mm)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=,X)') %>% unlist() %>% as.numeric(.)) ~ 
+              str_split(Assay_type, '-')[[1]][2],
+            data.table::between(new_tray_number, 
+                                str_extract(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=Xx)') %>% unlist() %>% as.numeric(.)) ~ 
+              str_split(Assay_type, '-')[[1]][1],
+            data.table::between(new_tray_number, 
+                                str_extract(Locations, '(?<=Xx)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.)) ~ 
+              str_split(Assay_type, '-')[[1]][2],
+            TRUE ~ 'Empty'
+          ),
+        TRUE ~ 
+          case_when(
+            data.table::between(new_tray_number, 
+                                str_extract(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=X)') %>% unlist() %>% as.numeric(.)) ~ 
+              Assay_type,
+            data.table::between(new_tray_number, 
+                                str_extract(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.)) ~ 
+              Assay_type,
+            TRUE ~ 'Empty'
+          )
+      ),
+    Julian_date = yday(Date),
+    Year = year(Date) %>% 
+      as.factor(.)
+  )
+```
+
+
+```{r}
+Locations = "M1-39Mm0,X41-79Xx81-100"
+
+str_extract(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.)
+
+str_extract(Locations, '(?<=-)\\d+(?=Mm)') %>% unlist() %>% as.numeric(.)
+```
+
+```{r}
+str_extract(Locations, '(?<=Mm)\\d+') %>% unlist() %>% as.numeric(.)
+
+str_extract(Locations, '(?<=-)\\d+(?=,X)') %>% unlist() %>% as.numeric(.)
+```
+
+```{r}
+
+Locations = "M1-20Mm51-68,X21-41Xx71-88"
+
+str_extract(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.)
+
+str_extract(Locations, '(?<=-)\\d+(?=Mm)') %>% unlist() %>% as.numeric(.)
+```
+
+```{r}
+str_extract(Locations, '(?<=Mm)\\d+') %>% unlist() %>% as.numeric(.)
+
+str_extract(Locations, '(?<=-)\\d+(?=,X)') %>% unlist() %>% as.numeric(.)
+```
+
+```{r}
+new_tray_number = seq(1,100)
+
+# Locations = "M1-20Mm51-68,X21-41Xx71-88"
+
+# Locations = "M1-40X41-79"
+
+# Locations2 = "M1-60"
+
+Locations = "X1-6"
+
+str_extract(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.)
+              str_extract(Locations, '(?<=-)\\d+(?=Mm)') %>% unlist() %>% as.numeric(.)
+              
+              data.table::between(new_tray_number,
+              str_extract(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
+              str_extract(Locations, '(?<=-)\\d+(?=Mm)') %>% unlist() %>% as.numeric(.), NAbounds = NA)
+
+case_when(
+  nchar(Locations) > 20 ~
+    case_when(
+      data.table::between(new_tray_number,
+              str_extract(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
+              str_extract(Locations, '(?<=-)\\d+(?=Mm)') %>% unlist() %>% as.numeric(.), NAbounds = NA) ~ {
+                print("BS")},
+      data.table::between(new_tray_number,
+              str_extract(Locations, '(?<=Mm)\\d+') %>% unlist() %>% as.numeric(.),
+              str_extract(Locations, '(?<=-)\\d+(?=,X)') %>% unlist() %>% as.numeric(.), NAbounds = NA) ~ 'Mock',
+      data.table::between(new_tray_number,
+              str_extract(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
+              str_extract(Locations, '(?<=-)\\d+(?=Xx)') %>% unlist() %>% as.numeric(.), NAbounds = NA) ~ 'Xaj',
+      data.table::between(new_tray_number,
+              str_extract(Locations, '(?<=Xx)\\d+') %>% unlist() %>% as.numeric(.),
+              str_extract(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.), NAbounds = NA) ~ 'Xaj', 
+      
+      TRUE ~ 'Empty'
+      
+    ),
+  nchar(Locations) %>% between(9,14) ~
+    case_when(
+      data.table::between(new_tray_number,
+              str_extract(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
+              str_extract(Locations, '(?<=-)\\d+(?=X)') %>% unlist() %>% as.numeric(.), NAbounds = NA) ~ 'Mock',
+      data.table::between(new_tray_number,
+                str_extract(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
+                str_extract(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.), NAbounds = NA) ~ 'Xaj',
+      TRUE ~ 'Empty'
+    ),
+    nchar(Locations) < 6 ~
+      case_when(
+        data.table::between(new_tray_number,
+                str_extract(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
+                str_extract(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.), NAbounds = NA) ~ 'Mock',
+        data.table::between(new_tray_number,
+                str_extract(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
+                str_extract(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.), NAbounds = NA) ~ 'Xaj',
+        TRUE ~ 'Empty'
+      )
+  )
+
+
+
+```
+
+```{r}
+new_tray_number = seq(1,100)
+
+Locations = "X1-6"
+
+case_when(
+        data.table::between(new_tray_number,
+                str_extract(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
+                str_extract(Locations, '(?<=M\\d{1,2}-)\\d+(?=$)') %>% unlist() %>% as.numeric(.),
+                NAbounds = NA) ~ 'Mock',
+        data.table::between(new_tray_number,
+                str_extract(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
+                str_extract(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.),
+                NAbounds = NA) ~ 'Xaj',
+        TRUE ~ 'Empty'
+      )
+```
+
+
+```{r}
+ Genotype = if(str_split(`Genotype(s)`, ',')[[1]] %>% length() > 1){
+      ifelse(between(new_tray_number,
+                     str_extract_all(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
+                     str_extract_all(Locations, '(?<=-)\\d+(?=Mm)') %>% unlist() %>% as.numeric(.)),
+             str_split(`Genotype(s)`, ',')[[1]][1],
+             ifelse(between(new_tray_number,
+                            str_extract_all(Locations, '(?<=Mm)\\d+') %>% unlist() %>% as.numeric(.),
+                            str_extract_all(Locations, '(?<=-)\\d+(?=,X)') %>% unlist() %>% as.numeric(.)),
+                    str_split(`Genotype(s)`, ',')[[1]][2],
+                    ifelse(between(new_tray_number,
+                                   str_extract_all(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
+                                   str_extract_all(Locations, '(?<=-)\\d+(?=Xx)') %>% unlist() %>% as.numeric(.)),
+                           str_split(`Genotype(s)`, ',')[[1]][1],
+                           ifelse(between(new_tray_number,
+                                          str_extract_all(Locations, '(?<=Xx)\\d+') %>% unlist() %>% as.numeric(.),
+                                          str_extract_all(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.)),
+                                  str_split(`Genotype(s)`, ',')[[1]][2], 'Empty'))))
+    }else{
+      ifelse(between(new_tray_number,
+                     str_extract_all(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
+                     str_extract_all(Locations, '(?<=-)\\d+(?=X)') %>% unlist() %>% as.numeric(.)),
+             `Genotype(s)`,
+             ifelse(between(new_tray_number,
+                            str_extract_all(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
+                            str_extract_all(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.)),
+                    `Genotype(s)`, 'Empty'))
+    }
+```
+
+
+```{r}
+`Genotype(s)` = 'Ivanhoe'
+
+new_tray_number = seq(1,100)
+
+Locations = 'M1-40X41-79'
+
+case_when(
+  str_split(`Genotype(s)`, ',')[[1]] %>% length() > 1 ~ 
+    case_when(
+      data.table::between(new_tray_number, str_extract(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
+                          str_extract(Locations, '(?<=-)\\d+(?=Mm)') %>% unlist() %>% as.numeric(.), NAbounds = NA) ~ 
+        str_split(`Genotype(s)`, ',')[[1]][1],
+      data.table::between(new_tray_number, str_extract(Locations, '(?<=Mm)\\d+') %>% unlist() %>% as.numeric(.),
+                          str_extract(Locations, '(?<=-)\\d+(?=,X)') %>% unlist() %>% as.numeric(.), NAbounds = NA) ~ 
+        str_split(`Genotype(s)`, ',')[[1]][2],
+      data.table::between(new_tray_number, str_extract(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
+                          str_extract(Locations, '(?<=-)\\d+(?=Xx)') %>% unlist() %>% as.numeric(.), NAbounds = NA) ~ 
+        str_split(`Genotype(s)`, ',')[[1]][1],
+      data.table::between(new_tray_number, str_extract(Locations, '(?<=Xx)\\d+') %>% unlist() %>% as.numeric(.),
+                          str_extract(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.), NAbounds = NA) ~ 
+        str_split(`Genotype(s)`, ',')[[1]][2],
+      TRUE ~ 'Empty'
+    ),
+ str_split(`Genotype(s)`, ',')[[1]] %>% length() == 1 ~ 
+    case_when(
+      data.table::between(new_tray_number, str_extract(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
+                          str_extract(Locations, '(?<=-)\\d+(?=X)') %>% unlist() %>% as.numeric(.), NAbounds = NA) ~ 
+        `Genotype(s)`,
+      data.table::between(new_tray_number, str_extract(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
+                          str_extract(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.), NAbounds = NA) ~ 
+        `Genotype(s)`,
+      TRUE ~ 'Empty'
+    )
+)
+
+```
+
+```{r}
+new_tray_number = seq(1,100)
+
+Assay_type = "Nutlets-Twigs"
+
+Locations = 'M1-30Mm61-80,X31-60Xx81-100'
+
+case_when(
+  str_split(Assay_type, '-')[[1]] %>% length() > 1 ~ 
+    case_when(
+      data.table::between(new_tray_number, 
+                          str_extract(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
+                          str_extract(Locations, '(?<=-)\\d+(?=Mm)') %>% unlist() %>% as.numeric(.)) ~ 
+        str_split(Assay_type, '-')[[1]][1],
+      data.table::between(new_tray_number, 
+                          str_extract(Locations, '(?<=Mm)\\d+') %>% unlist() %>% as.numeric(.),
+                          str_extract(Locations, '(?<=-)\\d+(?=,X)') %>% unlist() %>% as.numeric(.)) ~ 
+        str_split(Assay_type, '-')[[1]][2],
+      data.table::between(new_tray_number, 
+                          str_extract(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
+                          str_extract(Locations, '(?<=-)\\d+(?=Xx)') %>% unlist() %>% as.numeric(.)) ~ 
+        str_split(Assay_type, '-')[[1]][1],
+      data.table::between(new_tray_number, 
+                          str_extract(Locations, '(?<=Xx)\\d+') %>% unlist() %>% as.numeric(.),
+                          str_extract(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.)) ~ 
+        str_split(Assay_type, '-')[[1]][2],
+      TRUE ~ 'Empty'
+    ),
+  TRUE ~ 
+    case_when(
+      data.table::between(new_tray_number, 
+                          str_extract(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
+                          str_extract(Locations, '(?<=-)\\d+(?=X)') %>% unlist() %>% as.numeric(.)) ~ 
+        Assay_type,
+      data.table::between(new_tray_number, 
+                          str_extract(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
+                          str_extract(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.)) ~ 
+        Assay_type,
+      TRUE ~ 'Empty'
+    )
+)
+
+
+
+
+```
+
+
+
+

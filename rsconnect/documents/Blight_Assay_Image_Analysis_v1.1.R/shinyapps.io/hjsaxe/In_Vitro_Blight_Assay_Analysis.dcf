@@ -5,10 +5,8 @@ account: hjsaxe
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 8449937
-bundleId: 6908603
+bundleId: 8165782
 url: https://hjsaxe.shinyapps.io/In_Vitro_Blight_Assay_Analysis/
-when: 1677790710.3651
-lastSyncTime: 1677790710.36512
 asMultiple: FALSE
 asStatic: FALSE
-ignoredFiles: Blight_Assay_Image_Analysis.R|In Vitro Blight Assay Show Image.R
+ignoredFiles: In Vitro Blight Assay Show Image.R|name/app.R|README.md|Troubleshoot_app.qmd

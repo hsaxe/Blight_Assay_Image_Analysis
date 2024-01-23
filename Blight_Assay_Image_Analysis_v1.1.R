@@ -21,6 +21,7 @@ library(DT)
 library(stringr)
 library(shinyWidgets)
 library(lubridate)
+library(ggprism)
 
 
 x = list.files(path = 'All_Data_Renamed/All_Data/', pattern = '*.csv')
@@ -43,7 +44,7 @@ b = z %>%
   filter(!filename %like% 'EPL|2022-03-28') %>%
   group_by(filename) %>%
   mutate(tray_number = seq(1:n()),
-         row = str_extract(kernel_name, '_.._')) %>%
+         row = str_extract(kernel_name, '\\d{2}(?=_\\d{2})')) %>%
   group_by(filename, row) %>%
   # Make more intuitive tray numbering
   mutate(new_tray_number = rev(tray_number)) %>%
@@ -51,102 +52,159 @@ b = z %>%
   select(!c(row, tray_number)) %>%
   arrange(-desc(new_tray_number)) %>%
   # Extract variables from filename
-  separate(filename, into = c('Date', 'Genotype(s)', 'Locations', 'Assay_type', 'DAI', 'Stage', 'Side'), sep = '_') %>%
+  separate(filename, into = c('Date',
+                              'Genotype(s)',
+                              'Locations',
+                              'Assay_type',
+                              'DAI', 
+                              'Stage', 
+                              'Side'), sep = '_') %>%
   filter(!DAI %in% c('0dai', '1dai')) %>% 
-  group_by(Date, `Genotype(s)`, Locations, Assay_type, DAI, Stage, Side) %>%
+  group_by(Date,
+           `Genotype(s)`,
+           Locations,
+           Assay_type,
+           DAI,
+           Stage,
+           Side) %>%
   mutate(
     # New filename is encoded with information about what each cell contains (genotype, treatment, assay type). This code extracts that information with string manipulation and regular expressions.
-    Treatment = if(str_split(`Genotype(s)`, ',')[[1]] %>% length() > 1){
-      ifelse(between(new_tray_number,
-                     str_extract_all(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
-                     str_extract_all(Locations, '(?<=-)\\d+(?=Mm)') %>% unlist() %>% as.numeric(.)),
-             'Mock',
-             ifelse(between(new_tray_number,
-                            str_extract_all(Locations, '(?<=Mm)\\d+') %>% unlist() %>% as.numeric(.),
-                            str_extract_all(Locations, '(?<=-)\\d+(?=,X)') %>% unlist() %>% as.numeric(.)),
-                    'Mock',
-                    ifelse(between(new_tray_number,
-                                   str_extract_all(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
-                                   str_extract_all(Locations, '(?<=-)\\d+(?=Xx)') %>% unlist() %>% as.numeric(.)),
-                           'Xaj',
-                           ifelse(between(new_tray_number,
-                                          str_extract_all(Locations, '(?<=Xx)\\d+') %>% unlist() %>% as.numeric(.),
-                                          str_extract_all(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.)),
-                                  'Xaj', 'Empty'))))
-    }else{
-      ifelse(between(new_tray_number,
-                     str_extract_all(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
-                     str_extract_all(Locations, '(?<=-)\\d+(?=X)') %>% unlist() %>% as.numeric(.)),
-             'Mock',
-             ifelse(between(new_tray_number,
-                            str_extract_all(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
-                            str_extract_all(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.)),
-                    'Xaj', 'Empty'))
-    },
-    Genotype = if(str_split(`Genotype(s)`, ',')[[1]] %>% length() > 1){
-      ifelse(between(new_tray_number,
-                     str_extract_all(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
-                     str_extract_all(Locations, '(?<=-)\\d+(?=Mm)') %>% unlist() %>% as.numeric(.)),
-             str_split(`Genotype(s)`, ',')[[1]][1],
-             ifelse(between(new_tray_number,
-                            str_extract_all(Locations, '(?<=Mm)\\d+') %>% unlist() %>% as.numeric(.),
-                            str_extract_all(Locations, '(?<=-)\\d+(?=,X)') %>% unlist() %>% as.numeric(.)),
-                    str_split(`Genotype(s)`, ',')[[1]][2],
-                    ifelse(between(new_tray_number,
-                                   str_extract_all(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
-                                   str_extract_all(Locations, '(?<=-)\\d+(?=Xx)') %>% unlist() %>% as.numeric(.)),
-                           str_split(`Genotype(s)`, ',')[[1]][1],
-                           ifelse(between(new_tray_number,
-                                          str_extract_all(Locations, '(?<=Xx)\\d+') %>% unlist() %>% as.numeric(.),
-                                          str_extract_all(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.)),
-                                  str_split(`Genotype(s)`, ',')[[1]][2], 'Empty'))))
-    }else{
-      ifelse(between(new_tray_number,
-                     str_extract_all(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
-                     str_extract_all(Locations, '(?<=-)\\d+(?=X)') %>% unlist() %>% as.numeric(.)),
-             `Genotype(s)`,
-             ifelse(between(new_tray_number,
-                            str_extract_all(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
-                            str_extract_all(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.)),
-                    `Genotype(s)`, 'Empty'))
-    },
-    Assay_type = if(str_split(Assay_type, '-')[[1]] %>% length() > 1){
-      ifelse(between(new_tray_number,
-                     str_extract_all(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
-                     str_extract_all(Locations, '(?<=-)\\d+(?=Mm)') %>% unlist() %>% as.numeric(.)),
-             str_split(Assay_type, '-')[[1]][1],
-             ifelse(between(new_tray_number,
-                            str_extract_all(Locations, '(?<=Mm)\\d+') %>% unlist() %>% as.numeric(.),
-                            str_extract_all(Locations, '(?<=-)\\d+(?=,X)') %>% unlist() %>% as.numeric(.)),
-                    str_split(Assay_type, '-')[[1]][2],
-                    ifelse(between(new_tray_number,
-                                   str_extract_all(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
-                                   str_extract_all(Locations, '(?<=-)\\d+(?=Xx)') %>% unlist() %>% as.numeric(.)),
-                           str_split(Assay_type, '-')[[1]][1],
-                           ifelse(between(new_tray_number,
-                                          str_extract_all(Locations, '(?<=Xx)\\d+') %>% unlist() %>% as.numeric(.),
-                                          str_extract_all(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.)),
-                                  str_split(Assay_type, '-')[[1]][2], 'Empty'))))
-    }else{
-      ifelse(between(new_tray_number,
-                     str_extract_all(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
-                     str_extract_all(Locations, '(?<=-)\\d+(?=X)') %>% unlist() %>% as.numeric(.)),
-             Assay_type,
-             ifelse(between(new_tray_number,
-                            str_extract_all(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
-                            str_extract_all(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.)),
-                    Assay_type, 'Empty'))
-      
-    },
-    Julian_date = yday(Date)
+    
+    # Treatment = if(str_split(`Genotype(s)`, ',')[[1]] %>% length() > 1){
+    
+    Treatment = 
+      case_when(
+        nchar(Locations) > 20 ~
+          case_when(
+            data.table::between(new_tray_number,
+                                str_extract(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=Mm)') %>% unlist() %>% as.numeric(.), 
+                                NAbounds = NA) ~ 'Mock',
+            data.table::between(new_tray_number,
+                                str_extract(Locations, '(?<=Mm)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=,X)') %>% unlist() %>% as.numeric(.), 
+                                NAbounds = NA) ~ 'Mock',
+            data.table::between(new_tray_number,
+                                str_extract(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=Xx)') %>% unlist() %>% as.numeric(.),
+                                NAbounds = NA) ~ 'Xaj',
+            data.table::between(new_tray_number,
+                                str_extract(Locations, '(?<=Xx)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.), 
+                                NAbounds = NA) ~ 'Xaj', 
+            
+            TRUE ~ 'Empty'
+            
+          ),
+        nchar(Locations) %>% between(9,14) ~
+          case_when(
+            data.table::between(new_tray_number,
+                                str_extract(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=X)') %>% unlist() %>% as.numeric(.), 
+                                NAbounds = NA) ~ 'Mock',
+            data.table::between(new_tray_number,
+                                str_extract(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.), 
+                                NAbounds = NA) ~ 'Xaj',
+            TRUE ~ 'Empty'
+          ),
+        nchar(Locations) < 6 ~
+          case_when(
+            data.table::between(new_tray_number,
+                                str_extract(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.),
+                                NAbounds = NA) ~ 'Mock',
+            data.table::between(new_tray_number,
+                                str_extract(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.),
+                                NAbounds = NA) ~ 'Xaj',
+            TRUE ~ 'Empty'
+          )
+      ),
+    Genotype =
+      case_when(
+        str_split(`Genotype(s)`, ',')[[1]] %>% length() > 1 ~ 
+          case_when(
+            data.table::between(new_tray_number, str_extract(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=Mm)') %>% unlist() %>% as.numeric(.), NAbounds = NA) ~ 
+              str_split(`Genotype(s)`, ',')[[1]][1],
+            data.table::between(new_tray_number, str_extract(Locations, '(?<=Mm)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=,X)') %>% unlist() %>% as.numeric(.), NAbounds = NA) ~ 
+              str_split(`Genotype(s)`, ',')[[1]][2],
+            data.table::between(new_tray_number, str_extract(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=Xx)') %>% unlist() %>% as.numeric(.), NAbounds = NA) ~ 
+              str_split(`Genotype(s)`, ',')[[1]][1],
+            data.table::between(new_tray_number, str_extract(Locations, '(?<=Xx)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.), NAbounds = NA) ~ 
+              str_split(`Genotype(s)`, ',')[[1]][2],
+            TRUE ~ 'Empty'
+          ),
+        str_split(`Genotype(s)`, ',')[[1]] %>% length() == 1 ~ 
+          case_when(
+            data.table::between(new_tray_number, str_extract(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=X)') %>% unlist() %>% as.numeric(.), NAbounds = NA) ~ 
+              `Genotype(s)`,
+            data.table::between(new_tray_number, str_extract(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.), NAbounds = NA) ~ 
+              `Genotype(s)`,
+            TRUE ~ 'Empty'
+          )
+      ),
+    Assay_type = 
+      case_when(
+        str_split(Assay_type, '-')[[1]] %>% length() > 1 ~ 
+          case_when(
+            data.table::between(new_tray_number, 
+                                str_extract(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=Mm)') %>% unlist() %>% as.numeric(.)) ~ 
+              str_split(Assay_type, '-')[[1]][1],
+            data.table::between(new_tray_number, 
+                                str_extract(Locations, '(?<=Mm)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=,X)') %>% unlist() %>% as.numeric(.)) ~ 
+              str_split(Assay_type, '-')[[1]][2],
+            data.table::between(new_tray_number, 
+                                str_extract(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=Xx)') %>% unlist() %>% as.numeric(.)) ~ 
+              str_split(Assay_type, '-')[[1]][1],
+            data.table::between(new_tray_number, 
+                                str_extract(Locations, '(?<=Xx)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.)) ~ 
+              str_split(Assay_type, '-')[[1]][2],
+            TRUE ~ 'Empty'
+          ),
+        TRUE ~ 
+          case_when(
+            data.table::between(new_tray_number, 
+                                str_extract(Locations, '(?<=M)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=X)') %>% unlist() %>% as.numeric(.)) ~ 
+              Assay_type,
+            data.table::between(new_tray_number, 
+                                str_extract(Locations, '(?<=X)\\d+') %>% unlist() %>% as.numeric(.),
+                                str_extract(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.)) ~ 
+              Assay_type,
+            TRUE ~ 'Empty'
+          )
+      ),
+    Julian_date = yday(Date),
+    Year = year(Date) %>% 
+      as.factor(.)
   ) %>%
   ungroup() %>%
   select(!`Genotype(s)`) %>%
   # Remove these strings from genotype variable as I was able to encode this information into the variable 'Assay_type'
   mutate(Genotype = gsub('nutlets|-nutlets|twigs|-twigs', '', Genotype)) %>% 
   # This code combines the two sides of the nuts
-  group_by(Date, Julian_date, Genotype, Treatment, Assay_type, DAI, Stage, new_tray_number) %>%
-  summarise(Total_Area2 = sum(total.area), Blighted_Values2 = sum(blighted.values)) %>%
+  group_by(Date,
+           Julian_date, 
+           Year,
+           Genotype, 
+           Treatment, 
+           Assay_type, 
+           DAI, 
+           Stage, 
+           new_tray_number) %>%
+  summarise(Total_Area2 = sum(total.area), 
+            Blighted_Values2 = sum(blighted.values)) %>%
   mutate(Reps = max(new_tray_number)) %>% 
   ungroup() %>%
   replace_na(list(Total_Area2 = 0, Blighted_Values2 = 0)) %>%
@@ -158,96 +216,100 @@ b = z %>%
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(
-
-    # Application title
-    titlePanel("In Vitro Blight Assay Analysis"),
-
-    # Sidebar with a select inputs for multiple variables
-    sidebarLayout(
-        sidebarPanel(
-            selectInput('x',
-                        'Select x-axis value/factor',
-                        choices = NULL),
-
-            selectInput('y',
-                        'Select y-axis value/factor',
-                        choices = NULL),
-
-            selectInput('fill',
-                        'Select what to fill color by',
-                        choices = NULL),
-
-            selectInput('facet1',
-                        'Select facet one',
-                        choices = NULL),
-
-            selectInput('facet2',
-                        'Select facet two',
-                        choices = NULL),
-            
-            pickerInput('subset',
-                        'Subset x-axis data',
-                        options = list(`actions-box` = TRUE),
-                        choices = NULL,
-                        multiple = T),
-            
-            selectInput('filterCol',
-                        'Filter dataset: Select column',
-                        choices = NULL,
-                        multiple = F),
-            
-            pickerInput('filterVal',
-                        'Filter dataset: Select value(s)',
-                        options = list(`actions-box` = TRUE),
-                        choices = NULL,
-                        multiple = T),
-            
-            selectInput('filterCol2',
-                        'Filter dataset again: Select column',
-                        choices = NULL,
-                        multiple = F),
-            
-            pickerInput('filterVal2',
-                        'Filter dataset again: Select value(s)',
-                        options = list(`actions-box` = TRUE),
-                        choices = NULL,
-                        multiple = T),
-            
-            textInput('Plot_name', 'Name this plot'),
-            
-            numericInput('Save_width', 'Change size of saved plot',
-                         value = 8),
-            
-            downloadButton('save_plot', 
-                           'Save this plot'),
-            
-            width = 2
-        ),
-
-        # Show a plot of the selected variables and data table used to generate it
-        mainPanel(
-           plotOutput("plot",
-                      height = '600px'),
-
-           br(),
-
-           DT::DTOutput('plotData'),
-           
-           width = 10
-        )
+  
+  # Application title
+  titlePanel("In Vitro Blight Assay Analysis"),
+  
+  # Sidebar with a select inputs for multiple variables
+  sidebarLayout(
+    sidebarPanel(
+      selectInput('x',
+                  'Select x-axis value/factor',
+                  choices = NULL),
+      
+      selectInput('y',
+                  'Select y-axis value/factor',
+                  choices = NULL),
+      
+      selectInput('fill',
+                  'Select what to fill color by',
+                  choices = NULL),
+      
+      selectInput('facet1',
+                  'Select facet one',
+                  choices = NULL),
+      
+      selectInput('facet2',
+                  'Select facet two',
+                  choices = NULL),
+      
+      numericInput('facetCol',
+                  'Change facet column number',
+                  value = 3),
+      
+      pickerInput('subset',
+                  'Subset x-axis data',
+                  options = list(`actions-box` = TRUE),
+                  choices = NULL,
+                  multiple = T),
+      
+      selectInput('filterCol',
+                  'Filter dataset: Select column',
+                  choices = NULL,
+                  multiple = F),
+      
+      pickerInput('filterVal',
+                  'Filter dataset: Select value(s)',
+                  options = list(`actions-box` = TRUE),
+                  choices = NULL,
+                  multiple = T),
+      
+      selectInput('filterCol2',
+                  'Filter dataset again: Select column',
+                  choices = NULL,
+                  multiple = F),
+      
+      pickerInput('filterVal2',
+                  'Filter dataset again: Select value(s)',
+                  options = list(`actions-box` = TRUE),
+                  choices = NULL,
+                  multiple = T),
+      
+      textInput('Plot_name', 'Name this plot'),
+      
+      numericInput('Save_width', 'Change size of saved plot',
+                   value = 8),
+      
+      downloadButton('save_plot', 
+                     'Save this plot'),
+      
+      width = 2
+    ),
+    
+    # Show a plot of the selected variables and data table used to generate it
+    mainPanel(
+      plotOutput("plot",
+                 height = '600px'),
+      
+      br(),
+      
+      DT::DTOutput('plotData'),
+      
+      width = 10
     )
+  )
 )
 
 # Define server logic required to render plot and data table
 server <- function(input, output, session) {
-
+  
   # Dataset must be reactive to accept inputs from ui
   dataset = reactive({
-
+    
     b
-
+    
   })
-
+  
   # datasetMod = reactiveValues()
   # 
   # observe({
@@ -255,16 +317,16 @@ server <- function(input, output, session) {
   #   datasetMod$x = dataset()
   # 
   # })
-
+  
   # Renders data table to ui
   output$plotData = DT::renderDT({
-
+    
     datatable(dataset3(), 
               selection = list(target = 'column'),
               filter = 'top')
   })
-
-
+  
+  
   # These observers are needed for dynamic plotting of variables
   observe({
     updateSelectInput(session, 'x',
@@ -272,28 +334,28 @@ server <- function(input, output, session) {
                       choices = names(dataset()),
                       selected = 'Genotype')
   })
-
+  
   observe({
     updateSelectInput(session, 'y',
                       'Select y-axis value/factor',
                       choices = names(dataset()),
                       selected = 'Percent_blighted')
   })
-
+  
   observe({
     updateSelectInput(session, 'fill',
                       'Select what to fill color by',
                       choices = c('None', names(dataset())),
                       selected = 'Percent_blighted')
   })
-
+  
   observe({
     updateSelectInput(session, 'facet1',
                       'Select facet one',
                       choices = c('None', names(dataset())),
                       selected = 'Stage')
   })
-
+  
   observe({
     updateSelectInput(session, 'facet2',
                       'Select facet two',
@@ -333,11 +395,15 @@ server <- function(input, output, session) {
                       'Filter dataset again: Select value(s)',
                       choices = unique(dataset()[[input$filterCol2]]))
   })
-
   
-   
-    # Conditional statements for proper filling of boxplots and filtering of data
-    dataset2 = reactive({
+  
+  
+  # Conditional statements for proper filling of boxplots and filtering of data
+  dataset2 = reactive({
+    
+    if(dataset() %>% 
+       pull(input$fill) %>% 
+       is.numeric()){
       
       if(input$subset != 'None' && input$facet1 != 'None' && input$facet2 != 'None'){
         
@@ -394,112 +460,179 @@ server <- function(input, output, session) {
         
       }
       
-    })
-    
-    dataset3 = reactive({
+    } else {
       
-      req(input$filterCol)
-      
-      if(input$filterCol != 'None'){
+      if(input$subset != 'None' && input$facet1 != 'None' && input$facet2 != 'None'){
         
-        dataset2() %>% 
-          filter(.data[[input$filterCol]] %in% input$filterVal)
+        dataset() %>%
+          group_by(.data[[input$x]], .data[[input$facet1]], .data[[input$facet2]]) %>%
+          mutate(fill = .data[[input$fill]]) %>%
+          ungroup() %>%
+          filter(.data[[input$x]] %in% input$subset)
+        
+        
+      } else if(input$subset != 'None' && input$facet1 != 'None' && input$facet2 == 'None') {
+        
+        dataset() %>%
+          group_by(.data[[input$x]], .data[[input$facet1]]) %>%
+          mutate(fill = .data[[input$fill]]) %>%
+          ungroup() %>%
+          filter(.data[[input$x]] %in% input$subset)
+        
+      } else if(input$subset == 'None' && input$facet1 != 'None' && input$facet2 != 'None'){
+        
+        dataset() %>%
+          group_by(.data[[input$x]], .data[[input$facet1]], .data[[input$facet2]]) %>%
+          mutate(fill = .data[[input$fill]]) %>%
+          ungroup()
+        
+      } else if(input$subset != 'None' && input$facet1 == 'None' && input$facet2 == 'None'){
+        
+        dataset() %>%
+          group_by(.data[[input$x]]) %>%
+          mutate(fill = .data[[input$fill]]) %>%
+          ungroup() %>%
+          filter(.data[[input$x]] %in% input$subset)
+        
+      } else if(input$subset != 'None' && input$facet1 == 'None' && input$facet2 != 'None'){
+        
+        dataset() %>%
+          group_by(.data[[input$x]], .data[[input$facet2]]) %>%
+          mutate(fill = .data[[input$fill]]) %>%
+          ungroup() %>%
+          filter(.data[[input$x]] %in% input$subset)
+        
+      } else if(input$subset == 'None' && input$facet1 == 'None' && input$facet2 != 'None'){
+        
+        dataset() %>%
+          group_by(.data[[input$x]], .data[[input$facet2]]) %>%
+          mutate(fill = .data[[input$fill]]) %>%
+          ungroup()
         
       } else {
         
-        dataset2()
+        dataset() %>%
+          group_by(.data[[input$x]]) %>%
+          mutate(fill = .data[[input$fill]])
         
       }
       
-    })
+    }
     
-    dataset4 = reactive({
+    
+    
+  })
+  
+  
+  dataset3 = reactive({
+    
+    req(input$filterCol)
+    
+    if(input$filterCol != 'None'){
       
-      req(input$filterCol2)
+      dataset2() %>% 
+        filter(.data[[input$filterCol]] %in% input$filterVal)
       
-      if(input$filterCol2 != 'None'){
-        
-        dataset3() %>% 
-          filter(.data[[input$filterCol2]] %in% input$filterVal2)
-        
-      } else {
-        
-        dataset3()
-        
-      }
+    } else {
       
-    })
- 
-
+      dataset2()
+      
+    }
+    
+  })
+  
+  dataset4 = reactive({
+    
+    req(input$filterCol2)
+    
+    if(input$filterCol2 != 'None'){
+      
+      dataset3() %>% 
+        filter(.data[[input$filterCol2]] %in% input$filterVal2)
+      
+    } else {
+      
+      dataset3()
+      
+    }
+    
+  })
+  
+  
   
   # Making reactive plot
   plotInput = reactive({
-
+    
     if(input$facet1 != 'None' && input$facet2 != 'None'){
-
-      ggplot(dataset4(),
+      
+      p = ggplot(dataset4(),
              aes(reorder_within(.data[[input$x]], .data[[input$y]], list(.data[[input$facet1]], .data[[input$facet2]])),
                  .data[[input$y]],
                  fill = fill,
                  group = .data[[input$x]]))+
-        geom_boxplot()+
-        theme_gray(base_size = 15)+
-        theme(axis.text.x = element_text(angle = 25, face = 'bold'),
-              plot.title = element_text(hjust = 0.5))+
-        scale_fill_continuous(low = 'green', high = 'black',
-                              limits = c(0,100))+
-        scale_x_reordered()+
-        facet_wrap(get(input$facet1) ~ get(input$facet2), scales = 'free_x')
-
+        facet_wrap(get(input$facet1) ~ get(input$facet2),
+                   ncol = input$facetCol,
+                   scales = 'free_x')
+      
     } else if (input$facet1 != 'None' && input$facet2 == 'None'){
-
-      ggplot(dataset4(),
+      
+      p = ggplot(dataset4(),
              aes(reorder_within(.data[[input$x]], .data[[input$y]], .data[[input$facet1]]),
                  .data[[input$y]],
                  fill = fill,
-                 group = .data[[input$x]]))+
-        geom_boxplot()+
-        theme_gray(base_size = 15)+
-        theme(axis.text.x = element_text(angle = 25, face = 'bold'),
-              plot.title = element_text(hjust = 0.5))+
-        scale_fill_continuous(low = 'green', high = 'black',
-                              limits = c(0,100))+
-        scale_x_reordered()+
-        facet_wrap(~get(input$facet1), scales = 'free_x')
-
+                 group = .data[[input$x]]))
+        facet_wrap(~get(input$facet1),
+                   ncol = input$facetCol, 
+                   scales = 'free_x')
+      
     } else if (input$facet1 == 'None' && input$facet2 != 'None'){
-
-      ggplot(dataset4(),
+      
+      p = ggplot(dataset4(),
              aes(reorder_within(.data[[input$x]], .data[[input$y]], .data[[input$facet2]]),
                  .data[[input$y]],
                  fill = fill,
-                 group = .data[[input$x]]))+
-        geom_boxplot()+
-        theme_gray(base_size = 15)+
-        theme(axis.text.x = element_text(angle = 25, face = 'bold'),
-              plot.title = element_text(hjust = 0.5))+
-        scale_fill_continuous(low = 'green', high = 'black',
-                              limits = c(0,100))+
-        scale_x_reordered()+
-        facet_wrap(~get(input$facet2), scales = 'free_x')
-
+                 group = .data[[input$x]]))
+        facet_wrap(~get(input$facet2),
+                   ncol = input$facetCol,
+                   scales = 'free_x')
+      
     } else {
-
-      ggplot(dataset4(),
+      
+      p = ggplot(dataset4(),
              aes(reorder(.data[[input$x]], .data[[input$y]]), .data[[input$y]],
                  fill = fill,
-                 group = .data[[input$x]]))+
+                 group = .data[[input$x]]))
+      
+    }
+    
+    if(dataset() %>% 
+       pull(input$fill) %>% 
+       is.numeric()){
+      
+      p +  
         geom_boxplot()+
-        theme_gray(base_size = 15)+
+        theme_prism()+
         theme(axis.text.x = element_text(angle = 25, face = 'bold'),
               plot.title = element_text(hjust = 0.5))+
         scale_fill_continuous(low = 'green', high = 'black',
-                              limits = c(0,100))+
+                              # limits = c(0,100)
+        )+
         scale_x_reordered()
-
+      
+    } else {
+      
+      p +  
+        geom_boxplot()+
+        theme_prism()+
+        theme(axis.text.x = element_text(angle = 25, face = 'bold'),
+              plot.title = element_text(hjust = 0.5))+
+        scale_x_reordered()
+      
     }
-
-
+    
+    
+    
+    
   })
   
   # Rendering reactive plot to ui
@@ -516,7 +649,7 @@ server <- function(input, output, session) {
       save_plot(file, plotInput(), base_height = input$Save_width)
     }
   )
-
+  
 }
 
 # Run the application
