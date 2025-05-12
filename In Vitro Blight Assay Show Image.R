@@ -50,8 +50,6 @@ ui <- fluidPage(
       plotOutput("plot",
                  height = '800px'),
       
-      # textOutput('imageLabel'),
-      
       width = 8
     )
   )
@@ -66,12 +64,6 @@ server <- function(input, output, session) {
       
     })
     
-    
-    # output$imageLabel = renderText({
-    #   
-    #   paste("You have selected", input$image)
-    #   
-    #   })
   
     output$plot = renderPlot({
     
