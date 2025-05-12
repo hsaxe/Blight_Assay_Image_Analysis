@@ -213,6 +213,16 @@ b = z %>%
   )
 ```
 
+```{r}
+library(stringr)
+
+new_file <- "corrected_2024-04-01_85-8_M1-21,X51-71_Twigs_4dai_DS1_Side1_results.csv"
+
+# Attempting to use lookbehind with a variable-length pattern
+new_file2 <- str_replace(new_file, "(?<=M\\d+-\\d+),(?=X\\d+-\\d+)", "")
+print(new_file2)
+
+```
 
 ```{r}
 Locations = "M1-39Mm0,X41-79Xx81-100"
@@ -325,7 +335,6 @@ case_when(
       )
 ```
 
-
 ```{r}
  Genotype = if(str_split(`Genotype(s)`, ',')[[1]] %>% length() > 1){
       ifelse(between(new_tray_number,
@@ -355,7 +364,6 @@ case_when(
                     `Genotype(s)`, 'Empty'))
     }
 ```
-
 
 ```{r}
 `Genotype(s)` = 'Ivanhoe'
@@ -441,7 +449,3 @@ case_when(
 
 
 ```
-
-
-
-

@@ -1,0 +1,103 @@
+---
+title: "rename_files.py"
+format: html
+editor: visual
+jupyter: python3
+---
+
+## Import packages
+
+```{python}
+import os
+import re
+```
+
+Check current working directory
+
+```{python}
+os.getcwd()
+```
+
+Create variable of path containing filenames and
+
+```{python}
+filenames = os.listdir('C:/Users/hsaxe/Box/ALAB/GitHub/Blight_Assay_Image_Analysis/All_Data_Renamed/2024 inoculations/')
+
+path = 'C:/Users/hsaxe/Box/ALAB/GitHub/Blight_Assay_Image_Analysis/All_Data_Renamed/2024 inoculations/'
+
+print(path)
+
+print(filenames)
+```
+
+```{python}
+# for file in filenames:
+#   print('Renaming ' + file + ' to ' + file.replace('corrected_', '').
+#                                       replace('2022', '2023').
+#                                       replace('nutlets_Twigs', 'nutlets_None_Twigs'))
+#   os.rename(path + file, path + file.replace('corrected_', '').
+#                                       replace('2022', '2023').
+#                                       replace('nutlets_Twigs', 'nutlets_None_Twigs'))                         
+  
+```
+
+```{python}
+for file in filenames:
+  print('Renaming ' + file + ' to ' + file.replace('corrected_', ''))
+  
+  os.rename(path + file, path + file.replace('corrected_', ''))
+```
+
+```{python}
+os.listdir('C:/Users/hsaxe/Box/ALAB/GitHub/Blight_Assay_Image_Analysis/All_Data_Renamed/2024 inoculations/')
+```
+
+```{python}
+for file in filenames:
+  # replace 'corrected' with ''
+  new_file = re.sub(r'^corrected_', '', file)
+  
+  # search for naming error
+  search_res = re.search(r'(M\d+-\d+),(X\d+-\d+)', new_file)
+  
+  if search_res:
+    # if match found, assign to 'pattern'
+    pattern = search_res.group(0)
+    print(f'Match found: {pattern}')
+    
+    # replace the ',' in 'pattern' with '' and assign to 'replacement'
+    replacement = re.sub(',', '', pattern)
+    # replace old 'pattern' with new 'replacement' and assign to 'new_file2'
+    new_file2 = re.sub(pattern, replacement, new_file)
+    # rename all files with error
+    os.rename(path + new_file, path + new_file2)
+    print(f'Replacing {new_file} with {new_file2}')
+  else:
+    print(f'No match found in {new_file}')
+    
+  
+  
+  # new_file2 = re.sub(r'(?<=M\d+-\d+),(?=X\d+-\d+)', '', new_file)
+  # print('Then, renaming ' + new_file + ' to ' + new_file2)
+  
+  # os.rename(path + file, path + new_file)
+```
+
+```{python}
+filenames2 = os.listdir('C:/Users/hsaxe/Box/ALAB/GitHub/Blight_Assay_Image_Analysis/All_Data_Renamed/All_Data/')
+
+path2 = 'C:/Users/hsaxe/Box/ALAB/GitHub/Blight_Assay_Image_Analysis/All_Data_Renamed/All_Data/'
+
+print(path2)
+
+print(filenames2)
+```
+
+```{python}
+for file in filenames2:
+  # replace 'corrected' with ''
+  new_file = re.sub(r'85-8', '85-008', file)
+  # rename all files with error
+  os.rename(path2 + file, path2 + new_file)
+  print(f'Replacing {file} with {new_file}')
+```

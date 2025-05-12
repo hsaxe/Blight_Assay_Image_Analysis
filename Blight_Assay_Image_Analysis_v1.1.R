@@ -69,9 +69,6 @@ b = z %>%
            Side) %>%
   mutate(
     # New filename is encoded with information about what each cell contains (genotype, treatment, assay type). This code extracts that information with string manipulation and regular expressions.
-    
-    # Treatment = if(str_split(`Genotype(s)`, ',')[[1]] %>% length() > 1){
-    
     Treatment = 
       case_when(
         nchar(Locations) > 20 ~
@@ -92,9 +89,7 @@ b = z %>%
                                 str_extract(Locations, '(?<=Xx)\\d+') %>% unlist() %>% as.numeric(.),
                                 str_extract(Locations, '(?<=-)\\d+(?=$)') %>% unlist() %>% as.numeric(.), 
                                 NAbounds = NA) ~ 'Xaj', 
-            
             TRUE ~ 'Empty'
-            
           ),
         nchar(Locations) %>% between(9,14) ~
           case_when(
@@ -223,9 +218,18 @@ ui <- fluidPage(
   # Sidebar with a select inputs for multiple variables
   sidebarLayout(
     sidebarPanel(
+      
+      checkboxInput("all_genotype_years", 
+                    HTML("Use only genotypes with data<br>across all years?"), 
+                    value = FALSE),
+      
       selectInput('x',
                   'Select x-axis value/factor',
                   choices = NULL),
+      
+      checkboxInput("reorder", 
+                    "Reorder x-axis by y-values?", 
+                    value = FALSE),
       
       selectInput('y',
                   'Select y-axis value/factor',
@@ -234,6 +238,16 @@ ui <- fluidPage(
       selectInput('fill',
                   'Select what to fill color by',
                   choices = NULL),
+      
+      textInput('fill_low', 
+                HTML('Type fill color for high values<br>
+                (for continuous data)'),
+                value = 'green'),
+      
+      textInput('fill_high', 
+                HTML('Type fill color for high values<br>
+                (for continuous data)'),
+                value = 'black'),
       
       selectInput('facet1',
                   'Select facet one',
@@ -306,17 +320,20 @@ server <- function(input, output, session) {
   # Dataset must be reactive to accept inputs from ui
   dataset = reactive({
     
-    b
+    if(input$all_genotype_years){
+      
+      ## This code gets all Genotypes present in all years
+      b %>%
+        group_by(Genotype) %>%
+        filter(n_distinct(Year) == n_distinct(b$Year))
+      
+    } else {
+      
+      b
+      
+    }
     
   })
-  
-  # datasetMod = reactiveValues()
-  # 
-  # observe({
-  # 
-  #   datasetMod$x = dataset()
-  # 
-  # })
   
   # Renders data table to ui
   output$plotData = DT::renderDT({
@@ -401,9 +418,7 @@ server <- function(input, output, session) {
   # Conditional statements for proper filling of boxplots and filtering of data
   dataset2 = reactive({
     
-    if(dataset() %>% 
-       pull(input$fill) %>% 
-       is.numeric()){
+    if(is.numeric(dataset()[[input$fill]])){
       
       if(input$subset != 'None' && input$facet1 != 'None' && input$facet2 != 'None'){
         
@@ -465,61 +480,46 @@ server <- function(input, output, session) {
       if(input$subset != 'None' && input$facet1 != 'None' && input$facet2 != 'None'){
         
         dataset() %>%
-          group_by(.data[[input$x]], .data[[input$facet1]], .data[[input$facet2]]) %>%
           mutate(fill = .data[[input$fill]]) %>%
-          ungroup() %>%
           filter(.data[[input$x]] %in% input$subset)
         
         
       } else if(input$subset != 'None' && input$facet1 != 'None' && input$facet2 == 'None') {
         
         dataset() %>%
-          group_by(.data[[input$x]], .data[[input$facet1]]) %>%
           mutate(fill = .data[[input$fill]]) %>%
-          ungroup() %>%
           filter(.data[[input$x]] %in% input$subset)
         
       } else if(input$subset == 'None' && input$facet1 != 'None' && input$facet2 != 'None'){
         
         dataset() %>%
-          group_by(.data[[input$x]], .data[[input$facet1]], .data[[input$facet2]]) %>%
-          mutate(fill = .data[[input$fill]]) %>%
-          ungroup()
+          mutate(fill = .data[[input$fill]])
         
       } else if(input$subset != 'None' && input$facet1 == 'None' && input$facet2 == 'None'){
         
         dataset() %>%
-          group_by(.data[[input$x]]) %>%
           mutate(fill = .data[[input$fill]]) %>%
-          ungroup() %>%
           filter(.data[[input$x]] %in% input$subset)
         
       } else if(input$subset != 'None' && input$facet1 == 'None' && input$facet2 != 'None'){
         
         dataset() %>%
-          group_by(.data[[input$x]], .data[[input$facet2]]) %>%
           mutate(fill = .data[[input$fill]]) %>%
-          ungroup() %>%
           filter(.data[[input$x]] %in% input$subset)
         
       } else if(input$subset == 'None' && input$facet1 == 'None' && input$facet2 != 'None'){
         
         dataset() %>%
-          group_by(.data[[input$x]], .data[[input$facet2]]) %>%
-          mutate(fill = .data[[input$fill]]) %>%
-          ungroup()
+          mutate(fill = .data[[input$fill]])
         
       } else {
         
         dataset() %>%
-          group_by(.data[[input$x]]) %>%
           mutate(fill = .data[[input$fill]])
         
       }
       
     }
-    
-    
     
   })
   
@@ -558,18 +558,17 @@ server <- function(input, output, session) {
     
   })
   
-  
-  
   # Making reactive plot
   plotInput = reactive({
+    # if reordering
+    if(input$reorder){
     
     if(input$facet1 != 'None' && input$facet2 != 'None'){
       
       p = ggplot(dataset4(),
              aes(reorder_within(.data[[input$x]], .data[[input$y]], list(.data[[input$facet1]], .data[[input$facet2]])),
                  .data[[input$y]],
-                 fill = fill,
-                 group = .data[[input$x]]))+
+                 fill = fill))+
         facet_wrap(get(input$facet1) ~ get(input$facet2),
                    ncol = input$facetCol,
                    scales = 'free_x')
@@ -579,8 +578,7 @@ server <- function(input, output, session) {
       p = ggplot(dataset4(),
              aes(reorder_within(.data[[input$x]], .data[[input$y]], .data[[input$facet1]]),
                  .data[[input$y]],
-                 fill = fill,
-                 group = .data[[input$x]]))
+                 fill = fill))+
         facet_wrap(~get(input$facet1),
                    ncol = input$facetCol, 
                    scales = 'free_x')
@@ -590,8 +588,7 @@ server <- function(input, output, session) {
       p = ggplot(dataset4(),
              aes(reorder_within(.data[[input$x]], .data[[input$y]], .data[[input$facet2]]),
                  .data[[input$y]],
-                 fill = fill,
-                 group = .data[[input$x]]))
+                 fill = fill))+
         facet_wrap(~get(input$facet2),
                    ncol = input$facetCol,
                    scales = 'free_x')
@@ -600,8 +597,7 @@ server <- function(input, output, session) {
       
       p = ggplot(dataset4(),
              aes(reorder(.data[[input$x]], .data[[input$y]]), .data[[input$y]],
-                 fill = fill,
-                 group = .data[[input$x]]))
+                 fill = fill))
       
     }
     
@@ -612,10 +608,12 @@ server <- function(input, output, session) {
       p +  
         geom_boxplot()+
         theme_prism()+
-        theme(axis.text.x = element_text(angle = 25, face = 'bold'),
+        theme(axis.text.x = element_text(angle = 45,
+                                         hjust = 1,
+                                         vjust = 1,
+                                         face = 'bold'),
               plot.title = element_text(hjust = 0.5))+
-        scale_fill_continuous(low = 'green', high = 'black',
-                              # limits = c(0,100)
+        scale_fill_continuous(low = input$fill_low, high = input$fill_high,
         )+
         scale_x_reordered()
       
@@ -624,14 +622,87 @@ server <- function(input, output, session) {
       p +  
         geom_boxplot()+
         theme_prism()+
-        theme(axis.text.x = element_text(angle = 25, face = 'bold'),
+        theme(axis.text.x = element_text(angle = 45,
+                                         hjust = 1,
+                                         vjust = 1,
+                                         face = 'bold'),
               plot.title = element_text(hjust = 0.5))+
         scale_x_reordered()
       
     }
     
-    
-    
+    # no reordering
+    } else {
+      
+      if(input$facet1 != 'None' && input$facet2 != 'None'){
+        
+        p = ggplot(dataset4(),
+                   aes(.data[[input$x]], 
+                       .data[[input$y]],
+                       fill = fill))+
+          facet_wrap(get(input$facet1) ~ get(input$facet2),
+                     ncol = input$facetCol,
+                     scales = 'free_x')
+        
+      } else if (input$facet1 != 'None' && input$facet2 == 'None'){
+        
+        p = ggplot(dataset4(),
+                   aes(.data[[input$x]],
+                       .data[[input$y]],
+                       fill = fill))+
+        facet_wrap(~get(input$facet1),
+                   ncol = input$facetCol, 
+                   scales = 'free_x')
+        
+      } else if (input$facet1 == 'None' && input$facet2 != 'None'){
+        
+        p = ggplot(dataset4(),
+                   aes(.data[[input$x]],
+                       .data[[input$y]],
+                       fill = fill))+
+        facet_wrap(~get(input$facet2),
+                   ncol = input$facetCol,
+                   scales = 'free_x')
+        
+      } else {
+        
+        p = ggplot(dataset4(),
+                   aes(.data[[input$x]], .data[[input$y]],
+                       fill = fill))
+        
+      }
+      
+      if(dataset() %>% 
+         pull(input$fill) %>% 
+         is.numeric()){
+        
+        p +  
+          geom_boxplot()+
+          theme_prism()+
+          theme(axis.text.x = element_text(angle = 45, 
+                                           hjust = 1,
+                                           vjust = 1,
+                                           face = 'bold'),
+                plot.title = element_text(hjust = 0.5))+
+          scale_fill_continuous(low = input$fill_low, high = input$fill_high,
+          )+
+          scale_x_reordered()
+        
+      } else {
+        
+        p +  
+          geom_boxplot()+
+          theme_prism()+
+          theme(axis.text.x = element_text(angle = 45,
+                                           hjust = 1,
+                                           vjust = 1,
+                                           face = 'bold'),
+                plot.title = element_text(hjust = 0.5))+
+          scale_x_reordered()
+        
+      }
+      
+    }  
     
   })
   
